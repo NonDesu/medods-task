@@ -27,7 +27,6 @@ func main() {
 	//http server init
 	mux := http.NewServeMux()
 
-	mux.Handle("/", &homeHandler{})
 	mux.Handle("/auth/token", &TokenHandler{})
 	mux.Handle("/auth/renew", &TokenHandler{})
 
@@ -53,6 +52,7 @@ func main() {
 	}
 	fmt.Println("Pinged your deployment. You successfully connected to MongoDB!")
 
+	//Заполнение БД начальными данными
 	coll := client.Database("testing").Collection("users")
 	docs := []interface{}{
 		User{GUID: "guid1000", RefreshToken: "10000000"},
@@ -73,26 +73,8 @@ func main() {
 
 }
 
-type homeHandler struct{}
-
-func (h *homeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Test"))
-}
-
-type tokenStore interface {
-	GetTokens(guid string, coll *mongo.Collection) (string string)
-	RenewTokens(access string, refresh string, coll *mongo.Collection) (string, string)
-}
-
-type TokenHandler struct {
-	store tokenStore
-}
-
-func NewTokenHandler(s tokenStore) *TokenHandler {
-	return &TokenHandler{
-		store: s,
-	}
-}
+// REST маршруты
+type TokenHandler struct{}
 
 var (
 	AuthNew   = regexp.MustCompile(`^/auth/token/*$`)
@@ -113,7 +95,7 @@ func (h *TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 type InputGuid struct {
-	guid string
+	GUID string `json:"guid"`
 }
 
 func (h *TokenHandler) GetTokens(w http.ResponseWriter, r *http.Request) {
@@ -121,7 +103,7 @@ func (h *TokenHandler) GetTokens(w http.ResponseWriter, r *http.Request) {
 	var res InputGuid
 	json.NewDecoder(r.Body).Decode(&res)
 
-	accessToken, refreshToken := tokens.NewTokens(res.guid, coll)
+	accessToken, refreshToken := tokens.NewTokens(res.GUID, coll)
 	rmap := map[string]string{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,
@@ -139,8 +121,8 @@ func (h *TokenHandler) GetTokens(w http.ResponseWriter, r *http.Request) {
 }
 
 type InputTokens struct {
-	access_token  string
-	refresh_token string
+	Access_Token  string `json:"access_token"`
+	Refresh_Token string `json:"refresh_token"`
 }
 
 func (h *TokenHandler) RenewTokens(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +130,7 @@ func (h *TokenHandler) RenewTokens(w http.ResponseWriter, r *http.Request) {
 	var res InputTokens
 	json.NewDecoder(r.Body).Decode(&res)
 
-	accessToken, refreshToken := tokens.RenewTokens(res.access_token, res.refresh_token, coll)
+	accessToken, refreshToken := tokens.RenewTokens(res.Access_Token, res.Refresh_Token, coll)
 	rmap := map[string]string{
 		"access_token":  accessToken,
 		"refresh_token": refreshToken,

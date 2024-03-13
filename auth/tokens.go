@@ -95,9 +95,9 @@ func TokenParser(tokenString string) *jwt.Token {
 // Возвращает новую пару токенов, выполнив проверки, иначе возвращает старую пару
 func RenewTokens(inputAccessToken string, inputRefreshTokenEnc string, coll *mongo.Collection) (string, string) {
 	accessClaims := TokenParser(inputAccessToken).Claims.(jwt.MapClaims)          //Обработка Access токена
-	inputRefreshTokenDec, _ := b64.URLEncoding.DecodeString(inputRefreshTokenEnc) //
+	inputRefreshTokenDec, _ := b64.URLEncoding.DecodeString(inputRefreshTokenEnc) //Расшифровка Refresh токена
 
-	if accessClaims["pair"] != string(inputRefreshTokenDec)[:32] { //
+	if accessClaims["pair"] != string(inputRefreshTokenDec)[:32] { //Сравнение парных строк токенов
 		fmt.Println("Token mismatch")
 		return inputAccessToken, inputRefreshTokenEnc
 	}
@@ -105,7 +105,7 @@ func RenewTokens(inputAccessToken string, inputRefreshTokenEnc string, coll *mon
 	filter := bson.D{{"_id", accessClaims["guid"]}}
 	var result User
 	coll.FindOne(context.TODO(), filter).Decode(&result)
-	err := bcrypt.CompareHashAndPassword([]byte(result.RefreshToken), inputRefreshTokenDec)
+	err := bcrypt.CompareHashAndPassword([]byte(result.RefreshToken), inputRefreshTokenDec) //Сравнение refresh токена с хешем в БД
 	if err != nil {
 		fmt.Println("Bad or expired token")
 		return inputAccessToken, inputRefreshTokenEnc
