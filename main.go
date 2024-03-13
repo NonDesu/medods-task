@@ -2,7 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"regexp"
 
 	tokens "github.com/NonDesu/medods-task/auth"
 	"go.mongodb.org/mongo-driver/bson"
@@ -13,12 +16,24 @@ import (
 // "C:\Program Files\MongoDB\Server\7.0\bin\mongod.exe" --dbpath="f:\mongo\data\db"
 const uri = "mongodb://localhost:27017"
 
+var coll *mongo.Collection
+
 type User struct {
 	GUID         string `bson:"_id"`
 	RefreshToken string
 }
 
 func main() {
+	//http server init
+	mux := http.NewServeMux()
+
+	mux.Handle("/", &homeHandler{})
+	mux.Handle("/auth/token", &TokenHandler{})
+	mux.Handle("/auth/renew", &TokenHandler{})
+
+	http.ListenAndServe(":8080", mux)
+
+	//MongoDB init
 	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
 	opts := options.Client().ApplyURI(uri).SetServerAPIOptions(serverAPI)
 
@@ -57,3 +72,107 @@ func main() {
 	tokens.RenewTokens(a, r, coll)
 
 }
+
+type homeHandler struct{}
+
+func (h *homeHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("Test"))
+}
+
+type tokenStore interface {
+	GetTokens(guid string, coll *mongo.Collection) (string string)
+	RenewTokens(access string, refresh string, coll *mongo.Collection) (string, string)
+}
+
+type TokenHandler struct {
+	store tokenStore
+}
+
+func NewTokenHandler(s tokenStore) *TokenHandler {
+	return &TokenHandler{
+		store: s,
+	}
+}
+
+var (
+	AuthNew   = regexp.MustCompile(`^/auth/token/*$`)
+	AuthRenew = regexp.MustCompile(`^/auth/renew/*$`)
+)
+
+func (h *TokenHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	switch {
+	case r.Method == http.MethodGet && AuthNew.MatchString(r.URL.Path):
+		h.GetTokens(w, r)
+		return
+	case r.Method == http.MethodGet && AuthRenew.MatchString(r.URL.Path):
+		h.RenewTokens(w, r)
+		return
+	default:
+		return
+	}
+}
+
+type InputGuid struct {
+	guid string
+}
+
+func (h *TokenHandler) GetTokens(w http.ResponseWriter, r *http.Request) {
+
+	var res InputGuid
+	json.NewDecoder(r.Body).Decode(&res)
+
+	accessToken, refreshToken := tokens.NewTokens(res.guid, coll)
+	rmap := map[string]string{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+	}
+
+	jsonStr, err := json.Marshal(rmap)
+	if err != nil {
+		fmt.Printf("Error: %s", err.Error())
+	} else {
+		fmt.Println(string(jsonStr))
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonStr)
+}
+
+type InputTokens struct {
+	access_token  string
+	refresh_token string
+}
+
+func (h *TokenHandler) RenewTokens(w http.ResponseWriter, r *http.Request) {
+
+	var res InputTokens
+	json.NewDecoder(r.Body).Decode(&res)
+
+	accessToken, refreshToken := tokens.RenewTokens(res.access_token, res.refresh_token, coll)
+	rmap := map[string]string{
+		"access_token":  accessToken,
+		"refresh_token": refreshToken,
+	}
+
+	jsonStr, err := json.Marshal(rmap)
+	if err != nil {
+		fmt.Printf("Error: %s", err.Error())
+	} else {
+		fmt.Println(string(jsonStr))
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(jsonStr)
+}
+
+/*
+func InternalServerErrorHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Write([]byte("500 Internal Server Error"))
+}
+
+func NotFoundHandler(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotFound)
+	w.Write([]byte("404 Not Found"))
+}
+*/
